@@ -1,32 +1,64 @@
-import { ValidationPipe } from '@nestjs/common';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  console.log('🚀 Starting application...');
-
-  // Create app instance - this initializes all modules including DbModule
   const app = await NestFactory.create(AppModule);
 
-  // The database connection is already established here
-  // because DbModule's useFactory ran during app creation
-
+  // Global pipes
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
       whitelist: true,
+      forbidNonWhitelisted: true,
+      exceptionFactory: (errors) => {
+        // Get the first validation error
+        const firstError = errors[0];
+        const message = Object.values(firstError.constraints || {})[0];
+
+        // Return formatted error
+        return new BadRequestException({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: message,
+          },
+        });
+      },
     }),
   );
 
   app.setGlobalPrefix('api/v1');
 
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
+  // ============ SWAGGER SETUP ============
+  const config = new DocumentBuilder()
+    .setTitle('Anonymous Chat API')
+    .setDescription('Real-time group chat service API documentation')
+    .setVersion('1.0')
+    .addTag('auth', 'Authentication endpoints')
+    .addTag('rooms', 'Room management endpoints')
+    .addTag('messages', 'Message endpoints')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        description: 'Enter session token: sess_xxxxx',
+        in: 'header',
+      },
+      'session-token', // This name will be used in decorators
+    )
+    .addServer('http://localhost:3000', 'Development server')
+    .build();
 
-  console.log(`✅ Application is running on: http://localhost:${port}`);
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document); // Access at /api/docs
+  // =======================================
+
+  await app.listen(3000);
+  console.log(`Application running on: http://localhost:3000`);
+  console.log(`Swagger UI available at: http://localhost:3000/api/docs`);
 }
-
-bootstrap().catch((error) => {
-  console.error('❌ Failed to start application:', error);
-  process.exit(1);
-});
+bootstrap();
