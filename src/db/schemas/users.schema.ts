@@ -2,7 +2,7 @@ import { pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 
 export const users = pgTable('users', {
-  id: varchar('id', { length: 16 })
+  id: varchar('id', { length: 32 })
     .primaryKey()
     .$defaultFn(() => `usr_${nanoid(12)}`),
   username: varchar('username', { length: 24 }).notNull().unique(),

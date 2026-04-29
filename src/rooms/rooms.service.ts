@@ -1,16 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ForbiddenException,
+  MessageEmptyException,
+  MessageTooLongException,
   RoomNameTakenException,
   RoomNotFoundException,
 } from '../common/exceptions/custom-exceptions';
 import { UserService } from '../user/user.service';
+import { MessagesRepository } from './messages.repository';
 import { RoomsRepository } from './rooms.repository';
 
 @Injectable()
 export class RoomsService {
   constructor(
     private roomsRepository: RoomsRepository,
+    private messagesRepository: MessagesRepository,
     private userService: UserService,
     @Inject('REDIS_CLIENT') private redisClient: any,
   ) {}
@@ -42,7 +46,7 @@ export class RoomsService {
       rooms.map(async (room) => ({
         id: room.id,
         name: room.name,
-        createdBy: room.createdBy, // This is the username
+        createdBy: room.createdBy,
         createdAt: room.createdAt,
         activeUsers: await this.getRoomActiveUsersCount(room.id),
       })),
@@ -75,12 +79,15 @@ export class RoomsService {
       throw new RoomNotFoundException(id);
     }
 
-    // Check permission using username (createdBy stores username)
+    // Check permission using username
     if (room.createdBy !== username) {
       throw new ForbiddenException(
         'Only the room creator can delete this room',
       );
     }
+
+    // Delete all messages in the room
+    await this.messagesRepository.deleteByRoomId(id);
 
     // Delete the room
     await this.roomsRepository.delete(id);
@@ -89,6 +96,64 @@ export class RoomsService {
     await this.deleteRoomUsers(id);
 
     return { deleted: true };
+  }
+
+  // Message methods
+  async sendMessage(roomId: string, username: string, content: string) {
+    // Verify room exists
+    const room = await this.roomsRepository.findById(roomId);
+    if (!room) {
+      throw new RoomNotFoundException(roomId);
+    }
+
+    // Validate content
+    const trimmedContent = content.trim();
+    if (trimmedContent.length === 0) {
+      throw new MessageEmptyException();
+    }
+    if (trimmedContent.length > 1000) {
+      throw new MessageTooLongException();
+    }
+
+    // Save message
+    const message = await this.messagesRepository.create(
+      roomId,
+      username,
+      trimmedContent,
+    );
+
+    return message;
+  }
+
+  async getMessages(roomId: string, limit: number = 50, before?: string) {
+    // Verify room exists
+    const room = await this.roomsRepository.findById(roomId);
+    if (!room) {
+      throw new RoomNotFoundException(roomId);
+    }
+
+    // Ensure limit doesn't exceed 100
+    const safeLimit = Math.min(limit, 100);
+
+    // Get messages from repository
+    const messages = await this.messagesRepository.findByRoomId(
+      roomId,
+      safeLimit,
+      before,
+    );
+
+    // Determine if there are more messages
+    const hasMore = messages.length === safeLimit;
+
+    // Set next cursor (last message ID if there are more)
+    const nextCursor =
+      hasMore && messages.length > 0 ? messages[messages.length - 1].id : null;
+
+    return {
+      messages,
+      hasMore,
+      nextCursor,
+    };
   }
 
   // Redis helper methods

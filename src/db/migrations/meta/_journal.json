@@ -15,6 +15,13 @@
       "when": 1777490244437,
       "tag": "0001_grey_unus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777492737696,
+      "tag": "0002_petite_king_cobra",
+      "breakpoints": true
     }
   ]
 }
