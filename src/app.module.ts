@@ -1,17 +1,18 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { DbModule } from './db/db.module'; // Import DbModule
-import { RedisModule } from './redis/redis.module'; // Import RedisModule
+import { DbModule } from './db/db.module';
+
+import { RedisModule } from './redis/redis.module';
+import { RoomsModule } from './rooms/rooms.module';
 import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-    DbModule, // ✅ Add this - makes DRIZZLE available globally
-    RedisModule, // ✅ Add this - makes REDIS_CLIENT available globally
+    ConfigModule.forRoot({ isGlobal: true }),
+    DbModule,
+    RedisModule, // ✅ Make sure RedisModule is before RoomsModule
     UserModule,
+    RoomsModule,
   ],
 })
 export class AppModule {}

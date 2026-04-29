@@ -1,9 +1,13 @@
 import { pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { users } from './users.schema';
+import { nanoid } from 'nanoid';
 
 export const rooms = pgTable('rooms', {
-  id: varchar().primaryKey(),
-  name: varchar().notNull(),
+  // auto generate ID with nanoid, prefixed with "room_"
+  id: varchar('id', { length: 16 })
+    .primaryKey()
+    .$defaultFn(() => `room_${nanoid(12)}`),
+  name: varchar('name', { length: 32 }).notNull().unique(),
   createdBy: varchar('created_by_username', { length: 24 }).notNull(),
   createdByUserId: varchar('created_by_user_id').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
