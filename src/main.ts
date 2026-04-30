@@ -5,6 +5,50 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const app2 = await NestFactory.create(AppModule);
+
+  app.enableCors({
+    origin: [
+      'http://localhost:5173', // Vite default port
+      'http://localhost:3000', // Alternative
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
+      'http://192.168.0.101:5173',
+      // everyone is allowed
+      'http://localhost:*',
+      'http://127.0.0.1:*',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    credentials: true,
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
+  });
+  app2.enableCors({
+    origin: [
+      'http://localhost:5173', // Vite default port
+      'http://localhost:3000', // Alternative
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
+      'http://192.168.0.101:5173',
+      // everyone is allowed
+      'http://localhost:*',
+      'http://127.0.0.1:*',
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    credentials: true,
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
+  });
 
   // Global pipes
   app.useGlobalPipes(
@@ -30,6 +74,29 @@ async function bootstrap() {
   );
 
   app.setGlobalPrefix('api/v1');
+  app2.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      exceptionFactory: (errors) => {
+        // Get the first validation error
+        const firstError = errors[0];
+        const message = Object.values(firstError.constraints || {})[0];
+
+        // Return formatted error
+        return new BadRequestException({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: message,
+          },
+        });
+      },
+    }),
+  );
+
+  app2.setGlobalPrefix('api/v1');
 
   // ============ SWAGGER SETUP ============
   const config = new DocumentBuilder()
@@ -57,7 +124,8 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document); // Access at /api/docs
   // =======================================
 
-  await app.listen(3000);
+  await app.listen(3000, '0.0.0.0');
+  await app2.listen(3001, '0.0.0.0');
   console.log(`Application running on: http://localhost:3000`);
   console.log(`Swagger UI available at: http://localhost:3000/api/docs`);
 }

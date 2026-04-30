@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ChatGateway } from '../chat/chat.gateway';
 import {
   ForbiddenException,
   MessageEmptyException,
@@ -17,31 +18,101 @@ export class RoomsService {
     private messagesRepository: MessagesRepository,
     private userService: UserService,
     @Inject('REDIS_CLIENT') private redisClient: any,
+    private chatGateway: ChatGateway, // No forwardRef needed
   ) {}
 
+  // Cache room existence in Redis when created
   async createRoom(name: string, username: string) {
-    // Check if room name exists
     const existingRoom = await this.roomsRepository.findByName(name);
     if (existingRoom) {
       throw new RoomNameTakenException();
     }
 
-    // Get user to get the user ID
     const user = await this.userService.getUserByUsername(username);
     if (!user) {
       throw new Error('User not found');
     }
 
-    // Create room with both username and user ID
     const room = await this.roomsRepository.create(name, username, user.id);
 
+    // Cache room existence in Redis
+    await this.redisClient.setEx(`room:${room.id}:exists`, 3600, 'true');
+
     return room;
+  }
+
+  async sendMessage(roomId: string, username: string, content: string) {
+    const room = await this.roomsRepository.findById(roomId);
+    if (!room) {
+      throw new RoomNotFoundException(roomId);
+    }
+
+    const trimmedContent = content.trim();
+    if (trimmedContent.length === 0) {
+      throw new MessageEmptyException();
+    }
+    if (trimmedContent.length > 1000) {
+      throw new MessageTooLongException();
+    }
+
+    const message = await this.messagesRepository.create(
+      roomId,
+      username,
+      trimmedContent,
+    );
+
+    await this.chatGateway.broadcastNewMessage(roomId, message);
+
+    return message;
+  }
+
+  async deleteRoom(id: string, username: string) {
+    const room = await this.roomsRepository.findById(id);
+    if (!room) {
+      throw new RoomNotFoundException(id);
+    }
+
+    if (room.createdBy !== username) {
+      throw new ForbiddenException(
+        'Only the room creator can delete this room',
+      );
+    }
+
+    await this.chatGateway.broadcastRoomDeleted(id);
+
+    // Small delay to ensure event is sent
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    await this.messagesRepository.deleteByRoomId(id);
+    await this.roomsRepository.delete(id);
+    await this.deleteRoomUsers(id);
+
+    // Remove from cache
+    await this.redisClient.del(`room:${id}:exists`);
+
+    return { deleted: true };
+  }
+
+  async getRoomById(id: string) {
+    const room = await this.roomsRepository.findById(id);
+    if (!room) {
+      throw new RoomNotFoundException(id);
+    }
+
+    const activeUsers = await this.getRoomActiveUsersCount(id);
+
+    return {
+      id: room.id,
+      name: room.name,
+      createdBy: room.createdBy,
+      createdAt: room.createdAt,
+      activeUsers,
+    };
   }
 
   async getAllRooms() {
     const rooms = await this.roomsRepository.findAll();
 
-    // Add active users count from Redis
     const roomsWithActiveUsers = await Promise.all(
       rooms.map(async (room) => ({
         id: room.id,
@@ -55,97 +126,20 @@ export class RoomsService {
     return roomsWithActiveUsers;
   }
 
-  async getRoomById(id: string) {
-    const room = await this.roomsRepository.findById(id);
-    if (!room) {
-      throw new RoomNotFoundException(id);
-    }
-
-    // Get active users count from Redis
-    const activeUsers = await this.getRoomActiveUsersCount(id);
-
-    return {
-      id: room.id,
-      name: room.name,
-      createdBy: room.createdBy,
-      createdAt: room.createdAt,
-      activeUsers,
-    };
-  }
-
-  async deleteRoom(id: string, username: string) {
-    const room = await this.roomsRepository.findById(id);
-    if (!room) {
-      throw new RoomNotFoundException(id);
-    }
-
-    // Check permission using username
-    if (room.createdBy !== username) {
-      throw new ForbiddenException(
-        'Only the room creator can delete this room',
-      );
-    }
-
-    // Delete all messages in the room
-    await this.messagesRepository.deleteByRoomId(id);
-
-    // Delete the room
-    await this.roomsRepository.delete(id);
-
-    // Delete room users from Redis
-    await this.deleteRoomUsers(id);
-
-    return { deleted: true };
-  }
-
-  // Message methods
-  async sendMessage(roomId: string, username: string, content: string) {
-    // Verify room exists
-    const room = await this.roomsRepository.findById(roomId);
-    if (!room) {
-      throw new RoomNotFoundException(roomId);
-    }
-
-    // Validate content
-    const trimmedContent = content.trim();
-    if (trimmedContent.length === 0) {
-      throw new MessageEmptyException();
-    }
-    if (trimmedContent.length > 1000) {
-      throw new MessageTooLongException();
-    }
-
-    // Save message
-    const message = await this.messagesRepository.create(
-      roomId,
-      username,
-      trimmedContent,
-    );
-
-    return message;
-  }
-
   async getMessages(roomId: string, limit: number = 50, before?: string) {
-    // Verify room exists
     const room = await this.roomsRepository.findById(roomId);
     if (!room) {
       throw new RoomNotFoundException(roomId);
     }
 
-    // Ensure limit doesn't exceed 100
     const safeLimit = Math.min(limit, 100);
-
-    // Get messages from repository
     const messages = await this.messagesRepository.findByRoomId(
       roomId,
       safeLimit,
       before,
     );
 
-    // Determine if there are more messages
     const hasMore = messages.length === safeLimit;
-
-    // Set next cursor (last message ID if there are more)
     const nextCursor =
       hasMore && messages.length > 0 ? messages[messages.length - 1].id : null;
 
@@ -156,10 +150,9 @@ export class RoomsService {
     };
   }
 
-  // Redis helper methods
   private async getRoomActiveUsersCount(roomId: string): Promise<number> {
     try {
-      return await this.redisClient.scard(`room:${roomId}:users`);
+      return await this.redisClient.sCard(`room:${roomId}:users`);
     } catch (error) {
       return 0;
     }

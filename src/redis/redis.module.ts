@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { createClient } from 'redis';
+import { RedisPubSubService } from './redis-pubsub.service';
 
 @Global()
 @Module({
@@ -23,7 +24,8 @@ import { createClient } from 'redis';
         return client;
       },
     },
+    RedisPubSubService,
   ],
-  exports: ['REDIS_CLIENT'], // Only export the client, not the service
+  exports: ['REDIS_CLIENT', RedisPubSubService],
 })
 export class RedisModule {}
