@@ -77,18 +77,24 @@ export class RoomsService {
         'Only the room creator can delete this room',
       );
     }
+    console.log(`${username} is trying to delete room ${id}`);
 
-    await this.chatGateway.broadcastRoomDeleted(id);
+    try {
+      await this.chatGateway.broadcastRoomDeleted(id);
+    } catch (error) {
+      console.error(`Error broadcasting room deletion: ${error}`);
+    }
 
-    // Small delay to ensure event is sent
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // // Small delay to ensure event is sent
+    // await new Promise((resolve) => setTimeout(resolve, 100));
 
     await this.messagesRepository.deleteByRoomId(id);
     await this.roomsRepository.delete(id);
     await this.deleteRoomUsers(id);
 
-    // Remove from cache
+    // // Remove from cache
     await this.redisClient.del(`room:${id}:exists`);
+    console.log(`Room ${id} deleted and cache cleared`);
 
     return { deleted: true };
   }

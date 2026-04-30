@@ -55,7 +55,7 @@ export class ChatGateway
         const { roomId } = JSON.parse(message);
         this.server.to(roomId).emit('room:deleted', { roomId });
         // Force disconnect all clients in this room
-        const roomSockets = this.server.sockets.adapter.rooms.get(roomId);
+        const roomSockets = this.server.sockets.adapter?.rooms.get(roomId);
         if (roomSockets) {
           for (const socketId of roomSockets) {
             const socket = this.server.sockets.sockets.get(socketId);
