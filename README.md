@@ -76,7 +76,8 @@ DATABASE_URL=your_postgresql_connection_string
 REDIS_URL=your_redis_connection_string
 
 # App
-PORT=3000
+PORT=4000
+PORT_2=4001
 SESSION_TTL=86400
 
 # Socket

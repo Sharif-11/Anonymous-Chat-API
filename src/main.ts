@@ -124,9 +124,13 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document); // Access at /api/docs
   // =======================================
 
-  await app.listen(3000, '0.0.0.0');
-  await app2.listen(3001, '0.0.0.0');
-  console.log(`Application running on: http://localhost:3000`);
-  console.log(`Swagger UI available at: http://localhost:3000/api/docs`);
+  await app.listen(process.env.PORT || 3000, '0.0.0.0');
+  await app2.listen(process.env.PORT_2 || 3001, '0.0.0.0');
+  console.log(
+    `Application running on: http://localhost:${process.env.PORT || 3000}`,
+  );
+  console.log(
+    `Swagger UI available at: http://localhost:${process.env.PORT_2 || 3000}/api/docs`,
+  );
 }
 bootstrap();
