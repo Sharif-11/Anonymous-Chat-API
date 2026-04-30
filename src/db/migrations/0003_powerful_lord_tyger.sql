@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ALTER COLUMN "room_id" SET DATA TYPE varchar(32);
